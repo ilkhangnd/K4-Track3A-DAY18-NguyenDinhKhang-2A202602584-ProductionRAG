@@ -235,7 +235,9 @@ def enrich_chunks(
             enriched_text=enriched_text,
             summary=summary,
             hypothesis_questions=questions,
-            auto_metadata={**chunk.get("metadata", {}), **auto_meta},
+            # Source-controlled fields such as parent_id/version/status must not
+            # be overwritten by a probabilistic LLM extraction.
+            auto_metadata={**auto_meta, **chunk.get("metadata", {})},
             method="+".join(methods),
         ))
 

@@ -70,6 +70,7 @@ class BM25Search:
             )
             for index in ranked_indices
             if scores[index] > 0
+            and self.documents[index].get("metadata", {}).get("status") != "obsolete"
         ]
 
 
@@ -135,6 +136,7 @@ class DenseSearch:
                 method="dense",
             )
             for point in response.points
+            if point.payload.get("status") != "obsolete"
         ]
 
 

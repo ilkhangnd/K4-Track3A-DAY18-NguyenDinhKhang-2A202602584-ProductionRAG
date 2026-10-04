@@ -86,7 +86,9 @@ class DenseSearch:
     def _get_encoder(self):
         if self._encoder is None:
             from sentence_transformers import SentenceTransformer
-            self._encoder = SentenceTransformer(EMBEDDING_MODEL)
+            # The lab setup pre-downloads bge-m3. Avoid a Hugging Face network
+            # check at runtime so the local pipeline also works offline.
+            self._encoder = SentenceTransformer(EMBEDDING_MODEL, local_files_only=True)
         return self._encoder
 
     def index(self, chunks: list[dict], collection: str = COLLECTION_NAME) -> None:

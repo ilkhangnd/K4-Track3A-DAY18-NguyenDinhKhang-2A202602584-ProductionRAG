@@ -19,6 +19,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import OPENAI_API_KEY
 
 
+# A failed network connection should not be retried once for every chunk. This
+# process-local circuit breaker leaves the deterministic fallback available.
+_enrichment_api_available = True
+
+
 @dataclass
 class EnrichedChunk:
     """Chunk đã được làm giàu."""
@@ -135,8 +140,10 @@ def _enrich_single_call(text: str, source: str) -> dict:
 
     ⚠️ Cost optimization: 1 API call thay vì 4 calls riêng lẻ.
     """
+    global _enrichment_api_available
+
     fallback = _fallback_enrichment(text, source)
-    if not OPENAI_API_KEY:
+    if not OPENAI_API_KEY or not _enrichment_api_available:
         return fallback
 
     try:
@@ -176,7 +183,8 @@ def _enrich_single_call(text: str, source: str) -> dict:
             "metadata": metadata if isinstance(metadata, dict) else fallback["metadata"],
         }
     except Exception as error:
-        print(f"  ⚠️  Enrichment API failed: {error}")
+        _enrichment_api_available = False
+        print(f"  ⚠️  Enrichment API failed; using local fallback for remaining chunks: {error}")
         return fallback
 
 

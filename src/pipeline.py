@@ -18,6 +18,10 @@ from src.m5_enrichment import enrich_chunks
 from config import RERANK_TOP_K
 
 
+# Avoid retrying an unreachable LLM endpoint for every evaluation question.
+_llm_synthesis_available = True
+
+
 def build_pipeline():
     """Build production RAG pipeline."""
     print("=" * 60)
@@ -63,13 +67,15 @@ def build_pipeline():
 
 def run_query(query: str, search: HybridSearch, reranker: CrossEncoderReranker) -> tuple[str, list[str]]:
     """Run single query through pipeline."""
+    global _llm_synthesis_available
+
     results = search.search(query)
     docs = [{"text": r.text, "score": r.score, "metadata": r.metadata} for r in results]
     reranked = reranker.rerank(query, docs, top_k=RERANK_TOP_K)
     contexts = [r.text for r in reranked] if reranked else [r.text for r in results[:3]]
 
     from config import OPENAI_API_KEY
-    if OPENAI_API_KEY and contexts:
+    if OPENAI_API_KEY and contexts and _llm_synthesis_available:
         try:
             from openai import OpenAI
             client = OpenAI()
@@ -80,7 +86,8 @@ def run_query(query: str, search: HybridSearch, reranker: CrossEncoderReranker) 
             ])
             answer = resp.choices[0].message.content
         except Exception as e:
-            print(f"  ⚠️  LLM generation failed: {e}", flush=True)
+            _llm_synthesis_available = False
+            print(f"  ⚠️  LLM generation failed; using retrieved context for remaining queries: {e}", flush=True)
             answer = contexts[0]
     else:
         answer = contexts[0] if contexts else "Không tìm thấy thông tin."

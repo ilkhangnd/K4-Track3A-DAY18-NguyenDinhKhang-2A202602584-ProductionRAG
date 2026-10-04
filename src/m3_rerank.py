@@ -29,28 +29,42 @@ class CrossEncoderReranker:
 
     def _load_model(self):
         if self._model is None:
-            # TODO: Load cross-encoder model
-            # from sentence_transformers import CrossEncoder
-            # self._model = CrossEncoder(self.model_name)
-            #
-            # ⚠️ LƯU Ý: Dùng sentence_transformers.CrossEncoder, KHÔNG dùng FlagEmbedding.
-            # FlagReranker crash với transformers>=5.0 (XLMRobertaTokenizer lỗi).
-            pass
+            # Use sentence-transformers rather than FlagEmbedding: the latter has
+            # tokenizer compatibility issues with newer transformers releases.
+            from sentence_transformers import CrossEncoder
+
+            self._model = CrossEncoder(self.model_name, local_files_only=True)
         return self._model
 
     def rerank(self, query: str, documents: list[dict], top_k: int = RERANK_TOP_K) -> list[RerankResult]:
         """Rerank documents: top-20 → top-k."""
-        # TODO: Implement reranking
-        # 1. if not documents: return []
-        # 2. model = self._load_model()
-        # 3. pairs = [(query, doc["text"]) for doc in documents]
-        # 4. scores = model.predict(pairs)
-        # 5. if isinstance(scores, (int, float)): scores = [scores]
-        # 6. scored = sorted(zip(scores, documents), key=lambda x: x[0], reverse=True)
-        # 7. Return [RerankResult(text=..., original_score=doc.get("score", 0.0),
-        #            rerank_score=float(score), metadata=..., rank=i)
-        #            for i, (score, doc) in enumerate(scored[:top_k])]
-        return []
+        if not documents or top_k <= 0:
+            return []
+
+        model = self._load_model()
+        pairs = [(query, document["text"]) for document in documents]
+        scores = model.predict(pairs, show_progress_bar=False)
+
+        # ``predict`` normally returns a NumPy array, but accepts a single pair
+        # too and can then return a scalar depending on library version.
+        if hasattr(scores, "tolist"):
+            scores = scores.tolist()
+        if isinstance(scores, (int, float)):
+            scores = [scores]
+
+        scored_documents = sorted(
+            zip(scores, documents), key=lambda item: float(item[0]), reverse=True
+        )
+        return [
+            RerankResult(
+                text=document["text"],
+                original_score=float(document.get("score", 0.0)),
+                rerank_score=float(score),
+                metadata=dict(document.get("metadata", {})),
+                rank=rank,
+            )
+            for rank, (score, document) in enumerate(scored_documents[:top_k])
+        ]
 
 
 class FlashrankReranker:
